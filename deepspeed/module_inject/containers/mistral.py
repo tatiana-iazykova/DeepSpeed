@@ -6,7 +6,7 @@
 from .base import *
 from .features import HybridSplitQKVContainer, HybridGatedMLPContainer, MetaTensorContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
-from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
+from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedMistralInference
 import torch
 from torch.nn.parameter import Parameter
 
@@ -35,7 +35,7 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         _config.rotate_every_two = False
         _config.rotary_dim = self.hidden_size // self.num_attention_heads
         _config.rope_theta = self.policy.client_module.self_attn.rope_theta
-        self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
+        self.module = DeepSpeedMistralInference(_config, mp_group=self.mp_group)
 
         return self.module
 

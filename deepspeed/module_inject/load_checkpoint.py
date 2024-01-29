@@ -10,6 +10,7 @@ from deepspeed.model_implementations.transformers.ds_bert import DeepSpeedBERTIn
 from deepspeed.model_implementations.transformers.ds_megatron_gpt import DeepSpeedMegatronGPTInference
 from deepspeed.model_implementations.transformers.ds_opt import DeepSpeedOPTInference
 from deepspeed.model_implementations.transformers.ds_llama2 import DeepSpeedLlama2Inference
+from deepspeed.model_implementations.transformers.ds_mistral import DeepSpeedMistralInference
 
 import deepspeed.ops.transformer as transformer_inference
 from .layers import LinearLayer, Normalize, EmbeddingLayer, OPTEmbedding, RMSNormalize
@@ -214,6 +215,7 @@ def load_model_with_checkpoint(r_module,
         DeepSpeedMegatronGPTInference: load_transformer_layer,
         DeepSpeedOPTInference: load_transformer_layer,
         DeepSpeedLlama2Inference: load_transformer_layer,
+        DeepSpeedMistralInference: load_transformer_layer,
         OPTLearnedPositionalEmbedding: load,
         OPTEmbedding: load,
         LlamaRMSNorm: load,

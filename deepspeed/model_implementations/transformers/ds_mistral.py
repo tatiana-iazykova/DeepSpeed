@@ -3,15 +3,11 @@
 
 # DeepSpeed Team
 
-import torch
-from deepspeed import comm as dist
-from deepspeed.model_implementations.transformers.ds_llama2 import DeepSpeedLlama2Inference
-
-inference_module = None
+from deepspeed.model_implementations.transformers.ds_transformer import DeepSpeedTransformerInference
 
 
-class DeepSpeedMistralInference(DeepSpeedLlama2Inference):
-    """Initialize the DeepSpeed OPT Transformer Layer.
+class DeepSpeedMistralInference(DeepSpeedTransformerInference):
+    """Initialize the DeepSpeed GPT Transformer Layer.
     """
 
     def __init__(self,
