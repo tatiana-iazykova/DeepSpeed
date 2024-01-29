@@ -118,10 +118,10 @@ class MISTRALLayerPolicy(TransformerPolicy):
         )
         self.client_module = client_module
         try:
-            import llama
-            LLAMA2LayerPolicy._orig_layer_class = llama.model.TransformerBlock  # type: ignore
+            import mistral
+            MISTRALLayerPolicy._orig_layer_class = mistral.model.TransformerBlock  # type: ignore
         except:
-            LLAMA2LayerPolicy._orig_layer_class = None
+            MISTRALLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
         return self.client_module.attention.wq.weight.shape[1], \
