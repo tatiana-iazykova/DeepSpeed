@@ -6,7 +6,7 @@
 from .base import *
 from .features import HybridSplitQKVContainer, HybridGatedMLPContainer, MetaTensorContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
-from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedMistralInference
+from deepspeed.model_implementations.transformers.ds_mistral import DeepSpeedMistralInference
 import torch
 from torch.nn.parameter import Parameter
 
