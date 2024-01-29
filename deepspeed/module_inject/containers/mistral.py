@@ -34,7 +34,7 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         _config.rotate_half = True
         _config.rotate_every_two = False
         _config.rotary_dim = self.hidden_size // self.num_attention_heads
-        _config.rope_theta = self.policy.client_module.self_attn.rope_theta
+        _config.num_kv = self.policy.client_module.attention.n_kv_heads
         self.module = DeepSpeedMistralInference(_config, mp_group=self.mp_group)
 
         return self.module
@@ -107,9 +107,6 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[8], prefix + param_names[7])
         maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[10], prefix + param_names[8])
 
-        # This line is necessary for proper output when kernels + meta tensors are used in Llama models
-        # TODO: Investigate root-cause and fix meta tensor loading
-        module.mlp.output_b = None
 
 class MISTRALLayerPolicy(TransformerPolicy):
 
