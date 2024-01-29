@@ -33,7 +33,7 @@ def policy_to_ds_container(**kwargs):
         MegatronLayerPolicy: DS_MegatronGPTContainer,
         HFDistilBertLayerPolicy: DS_DistilBERTContainer,
         LLAMALayerPolicy: DS_LLAMAContainer,
-        MISTRALLayerPolicy: DS_MISTRALContainer,
+        MISTRALLayerPolicy: DS_LLAMAContainer,
         LLAMA2LayerPolicy: DS_LLAMA2Container,
         InternLMLayerPolicy: DS_InternLMContainer
     }
