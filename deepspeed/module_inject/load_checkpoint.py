@@ -183,12 +183,8 @@ def load_model_with_checkpoint(r_module,
         OPTLearnedPositionalEmbedding = transformers.models.opt.modeling_opt.OPTLearnedPositionalEmbedding
         if hasattr(transformers.models, "llama"):
             LlamaRMSNorm = transformers.models.llama.modeling_llama.LlamaRMSNorm
-        elif hasattr(transformers.models, "mistral"):
-            MistralRMSNorm = ransformers.models.mistral.modeling_mistral.MistralRMSNorm
         else:
             LlamaRMSNorm = None
-            MistralRMSNorm = None
-
     except:
         OPTLearnedPositionalEmbedding = None
     try:
@@ -224,7 +220,6 @@ def load_model_with_checkpoint(r_module,
         OPTLearnedPositionalEmbedding: load,
         OPTEmbedding: load,
         LlamaRMSNorm: load,
-        MistralRMSNorm: load,
         RMSNormalize: load,
         ColumnParallelLinear: load,
         ParallelEmbedding: load,
