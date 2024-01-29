@@ -6,7 +6,7 @@
 from .base import *
 from .features import HybridSplitQKVContainer, HybridGatedMLPContainer, MetaTensorContainer
 from deepspeed.utils.types import ActivationFuncType, NormType
-from deepspeed.model_implementations.transformers.ds_mistral import DeepSpeedMistralInference
+from deepspeed.model_implementations.transformers.ds_gpt import DeepSpeedGPTInference
 import torch
 from torch.nn.parameter import Parameter
 
@@ -31,11 +31,11 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
     def create_module(self, config=None):
         _config = config if config is not None else self.ds_model_config
 
-        _config.rotate_half = False
-        _config.rotate_every_two = True
+        _config.rotate_half = True
+        _config.rotate_every_two = False
         _config.rotary_dim = self.hidden_size // self.num_attention_heads
-        _config.num_kv = self.policy.client_module.attention.n_kv_heads
-        self.module = DeepSpeedMistralInference(_config, mp_group=self.mp_group)
+        _config.rope_theta = self.policy.client_module.self_attn.rope_theta
+        self.module = DeepSpeedGPTInference(_config, mp_group=self.mp_group)
 
         return self.module
 
@@ -45,10 +45,10 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         """
         self.lora_params = [
             maybe_get_lora(p) for p in [
-                self.policy.client_module.feed_forward.w3.weight, self.policy.client_module.feed_forward.w1.weight,
-                self.policy.client_module.feed_forward.w2.weight, self.policy.client_module.attention.wq.weight,
-                self.policy.client_module.attention.wk.weight, self.policy.client_module.attention.wv.weight,
-                self.policy.client_module.attention.wo.weight
+                self.policy.client_module.mlp.up_proj.weight, self.policy.client_module.mlp.gate_proj.weight,
+                self.policy.client_module.mlp.down_proj.weight, self.policy.client_module.self_attn.q_proj.weight,
+                self.policy.client_module.self_attn.k_proj.weight, self.policy.client_module.self_attn.v_proj.weight,
+                self.policy.client_module.self_attn.o_proj.weight
             ]
         ]
 
@@ -62,33 +62,33 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         """
         Necessary to implement for `HybridSplitQKVContainer`
         """
-        self.qw = self.policy.client_module.attention.wq.weight
+        self.qw = self.policy.client_module.self_attn.q_proj.weight
         self.qb = None
-        self.kw = self.policy.client_module.attention.wk.weight
+        self.kw = self.policy.client_module.self_attn.k_proj.weight
         self.kb = None
-        self.vw = self.policy.client_module.attention.wv.weight
+        self.vw = self.policy.client_module.self_attn.v_proj.weight
         self.vb = None
 
     def set_mlp_gate(self):
         """
         Necessary to implement for `HybridGatedMLPContainer`
         """
-        self.inter_up_w = self.policy.client_module.feed_forward.w2.weight
+        self.inter_up_w = self.policy.client_module.mlp.up_proj.weight
         self.inter_up_b = None
-        self.inter_gate_w = self.policy.client_module.feed_forward.w1.weight
+        self.inter_gate_w = self.policy.client_module.mlp.gate_proj.weight
         self.inter_gate_b = None
 
     def load_params(self, module, sd, weight_quantizer, mp_replace, prefix):
         param_names = (
-            'attention.wq.weight', \
-            'attention.wk.weight', \
-            'attention.wv.weight', \
-            'attention.wo.weight', \
-            'feed_forward.w3.weight', \
-            'feed_forward.w1.weight', \
-            'feed_forward.w2.weight', \
-            'ffn_norm.weight', \
-            'attention_norm.weight'
+            'self_attn.q_proj.weight', \
+            'self_attn.k_proj.weight', \
+            'self_attn.v_proj.weight', \
+            'self_attn.o_proj.weight', \
+            'mlp.up_proj.weight', \
+            'mlp.gate_proj.weight', \
+            'mlp.down_proj.weight', \
+            'post_attention_layernorm.weight', \
+            'input_layernorm.weight',
         )
 
         maybe_copy_qkv(module.attention,
@@ -107,6 +107,9 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         maybe_copy(module.mlp, sd, weight_quantizer, mp_replace, transformer_param_names[8], prefix + param_names[7])
         maybe_copy(module, sd, weight_quantizer, mp_replace, transformer_param_names[10], prefix + param_names[8])
 
+        # This line is necessary for proper output when kernels + meta tensors are used in Llama models
+        # TODO: Investigate root-cause and fix meta tensor loading
+        module.mlp.output_b = None
 
 class MISTRALLayerPolicy(TransformerPolicy):
 
@@ -118,41 +121,45 @@ class MISTRALLayerPolicy(TransformerPolicy):
         )
         self.client_module = client_module
         try:
-            import mistral
-            MISTRALLayerPolicy._orig_layer_class = mistral.model.TransformerBlock  # type: ignore
+            import transformers
+            MISTRALLayerPolicy._orig_layer_class = transformers.models.mistral.modeling_mistral.MistralDecoderLayer  # type: ignore
         except:
             MISTRALLayerPolicy._orig_layer_class = None
 
     def get_hidden_heads(self):
-        return self.client_module.attention.wq.weight.shape[1], \
-                self.client_module.n_heads, \
-                self.client_module.ffn_norm.eps, \
-                (self.client_module.feed_forward.w1.weight.shape[0] * \
-                    deepspeed.comm.get_world_size() if deepspeed.comm.is_initialized() else 1) # this is a hack to inject when model is already partitioned!
+        hidden_heads = (
+            getattr(self.client_module.self_attn.q_proj.weight, "ds_shape",
+                    self.client_module.self_attn.q_proj.weight.shape)[1],
+            self.client_module.self_attn.num_heads,
+            self.client_module.input_layernorm.variance_epsilon,
+            getattr(self.client_module.mlp.gate_proj.weight, "ds_shape",
+                    self.client_module.mlp.gate_proj.weight.shape)[0],
+        )
+        return hidden_heads
 
     def attention(self, enable_training=False):
-        qw = self.client_module.attention.wq.weight
-        kw = self.client_module.attention.wk.weight
-        vw = self.client_module.attention.wv.weight
+        qw = self.client_module.self_attn.q_proj.weight
+        kw = self.client_module.self_attn.k_proj.weight
+        vw = self.client_module.self_attn.v_proj.weight
 
         qkvw = Parameter(torch.cat((qw, kw, vw), dim=0), requires_grad=enable_training)
 
         return qkvw, \
                 None, \
-                self.client_module.attention.wo.weight, \
+                self.client_module.self_attn.o_proj.weight, \
                 None
 
     def mlp(self, enable_training=False):
-        mlp1_up = self.client_module.feed_forward.w3.weight
-        mlp1_gate = self.client_module.feed_forward.w1.weight
-        mlp2 = self.client_module.feed_forward.w2.weight
+        mlp1_up = self.client_module.mlp.up_proj.weight
+        mlp1_gate = self.client_module.mlp.gate_proj.weight
+        mlp2 = self.client_module.mlp.down_proj.weight
 
         mlp1 = Parameter(torch.cat((mlp1_up, mlp1_gate), dim=0), requires_grad=enable_training)
 
         return mlp1, None, mlp2, None
 
     def layernorm(self):
-        return self.client_module.ffn_norm.weight, \
+        return self.client_module.post_attention_layernorm.weight, \
                None, \
-               self.client_module.attention_norm.weight, \
+               self.client_module.input_layernorm.weight, \
                None
