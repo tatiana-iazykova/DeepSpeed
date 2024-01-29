@@ -34,7 +34,7 @@ class DS_MISTRALContainer(MetaTensorContainer, HybridGatedMLPContainer, HybridSp
         _config.rotate_half = True
         _config.rotate_every_two = False
         _config.rotary_dim = self.hidden_size // self.num_attention_heads
-        _config.num_kv = self.policy.client_module.attention.n_kv_heads
+        _config.rope_theta = self.policy.client_module.self_attn.rope_theta
         self.module = DeepSpeedMistralInference(_config, mp_group=self.mp_group)
 
         return self.module
